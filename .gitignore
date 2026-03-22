@@ -23,3 +23,6 @@ scopbenchmark/
 cath-domain-seqs.fa
 slurm_logs/
 pdb/
+
+.DS_Store
+TM_Vec_2_Preprint/
