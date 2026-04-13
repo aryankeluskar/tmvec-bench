@@ -17,25 +17,29 @@ export HYDRA_FULL_ERROR=1
 # module load python/miniforge3_pytorch/2.7.0
 # module load mamba/latest && source activate tmvec_distill
 
+FASTA_FILE="$REPO_ROOT/data/fasta/scope40-1000.fa"
 OUTPUT_FILE="$REPO_ROOT/results/scope40_foldseek_similarities.csv"
 echo "=========================================="
-echo "Running Foldseek exhaustive accuracy benchmark on SCOPe40-1000..."
+echo "Running Foldseek predictions on SCOPe40-1000..."
 echo ""
 echo "Model: Foldseek binaries/foldseek"
+echo "FASTA: ${FASTA_FILE} (1000 sequences)"
 echo "Output: ${OUTPUT_FILE}"
 echo ""
-python -m src.benchmarks.foldseek --dataset scope40 --threads ${SLURM_CPUS_PER_TASK:-1}
+python -m src.benchmarks.foldseek scope40
 echo ""
 echo "=========================================="
 
-OUTPUT_FILE="$REPO_ROOT/results/cath_foldseek_similarities.csv"
+FASTA_FILE="$REPO_ROOT/data/fasta/cath-domain-seqs-S100-1k.fa"
+OUTPUT_FILE="$REPO_ROOT/results/foldseek_similarities.csv"
 echo "=========================================="
-echo "Running Foldseek exhaustive accuracy benchmark on CATH S100..."
+echo "Running Foldseek predictions on CATH S100..."
 echo ""
 echo "Model: Foldseek binaries/foldseek"
+echo "FASTA: ${FASTA_FILE} (1000 sequences)"
 echo "Output: ${OUTPUT_FILE}"
 echo ""
-python -m src.benchmarks.foldseek --dataset cath --threads ${SLURM_CPUS_PER_TASK:-1}
+python -m src.benchmarks.foldseek
 echo "=========================================="
 
 echo ""
@@ -47,7 +51,8 @@ echo "=========================================="
 
 echo ""
 echo "=========================================="
-echo "Accuracy benchmark complete."
-echo "Use scripts/foldseek-cpu.sh, scripts/foldseek-gpu.sh, and"
-echo "scripts/foldseek-gpu-exhaustive.sh for the three runtime configurations."
+echo "Running Foldseek Model Time Benchmark..."
 echo "=========================================="
+python src/time_benchmarks/foldseek_time_benchmark.py \
+    --structure-dir data/pdb/cath-s100 \
+    --threads ${SLURM_CPUS_PER_TASK:-1} 
