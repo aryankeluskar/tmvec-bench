@@ -52,4 +52,5 @@ echo ""
 echo "=========================================="
 echo "Running TM-align Model Time Benchmark..."
 echo "=========================================="
-python -m src.time_benchmarks.tmalign_time_benchmark
+python -m src.time_benchmarks.tmalign_time_benchmark \
+    --threads ${SLURM_CPUS_PER_TASK:-1}
