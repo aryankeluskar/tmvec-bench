@@ -1,56 +1,58 @@
 #!/usr/bin/env python
-"""
-Generate a table with combined CATH S100 analysis results.
-"""
+"""Generate a merged CATH comparison table."""
+
+from pathlib import Path
 
 import pandas as pd
 
 
-# Path to the result directory. Adjust as needed.
-resdir = 'results'
+RESDIR = Path("results")
+REQUIRED_METHODS = ["tmvec1", "tmvec2", "tmvec2_student", "tmalign"]
+OPTIONAL_METHODS = ["prostt5"]
 
-# Methods being compared.
-methods = ['tmvec1', 'tmvec2', 'tmvec2_student', 'tmalign', 'foldseek']
+
+def load_method(path, method, score_column="tm_score", clean_tmvec_ids=False):
+    """Load one similarity CSV and normalize its pair key."""
+    df = pd.read_csv(path).copy()
+
+    if clean_tmvec_ids:
+        for i in (1, 2):
+            df[f"seq{i}_id"] = df[f"seq{i}_id"].str.split("/").str[0]
+            df[f"seq{i}_id"] = df[f"seq{i}_id"].str.split("|").str[2]
+
+    df["seq_pair"] = df.apply(
+        lambda row: ",".join(sorted([row["seq1_id"], row["seq2_id"]])),
+        axis=1,
+    )
+    df = df.drop(columns=["seq1_id", "seq2_id"])
+    df = df.rename(columns={score_column: method}).set_index("seq_pair")
+    return df
 
 
 def main():
-    dfs = []
-    for method in methods[:4]:
-        dfs.append(pd.read_csv(f'{resdir}/cath_{method}_similarities.csv').rename(
-            columns={'tm_score': method}))
+    tables = []
 
-    # Foldseek reports both TM-scores and E-values. We will use E-values.
-    dfs.append(pd.read_csv(f'{resdir}/cath_foldseek_similarities.csv').drop(
-        columns='tm_score').rename(columns={'evalue': 'foldseek'}))
+    for method in REQUIRED_METHODS:
+        path = RESDIR / f"cath_{method}_similarities.csv"
+        tables.append(load_method(path, method, clean_tmvec_ids=method.startswith("tmvec")))
 
-    # TM-Vec models generate prefix like "cath|4_4_0|" and suffix like "/1-150"
-    # on sequence IDs. Remove them.
-    for df in dfs[:3]:
-        for i in (1, 2):
-            df[f'seq{i}_id'] = df[f'seq{i}_id'].str.split('/').str[0]
-            df[f'seq{i}_id'] = df[f'seq{i}_id'].str.split('|').str[2]
+    foldseek_path = RESDIR / "cath_foldseek_similarities.csv"
+    tables.append(load_method(foldseek_path, "foldseek", score_column="evalue"))
 
-    # Sort and merge IDs of sequences 1 and 2.
-    for df in dfs:
-        df['seq_pair'] = df.apply(lambda row: ','.join(sorted(
-            [row['seq1_id'], row['seq2_id']])), axis=1)
-        df.drop(['seq1_id', 'seq2_id'], axis=1, inplace=True)
-        df.set_index('seq_pair', inplace=True)
+    for method in OPTIONAL_METHODS:
+        path = RESDIR / f"cath_{method}_similarities.csv"
+        if not path.exists():
+            continue
+        tables.append(load_method(path, method))
 
-    # Combine results.
-    df = pd.concat(dfs, axis=1)
+    df = pd.concat(tables, axis=1)
     print(df.shape[0])
-    # df.dropna(how='any', inplace=True)
 
-    # Append ground truth.
-    truth = pd.read_table('truth.tsv')
-    truth['seq_pair'] = truth['a'] + ',' + truth['b']
-    truth.set_index('seq_pair', inplace=True)
-    truth.drop(columns=['a', 'b'], inplace=True)
+    truth = pd.read_table("truth.tsv")
+    truth["seq_pair"] = truth["a"] + "," + truth["b"]
+    truth = truth.set_index("seq_pair").drop(columns=["a", "b"])
     df = pd.concat([truth, df], axis=1)
-
-    # Output.
-    df.to_csv('results.tsv', sep='\t')
+    df.to_csv("results.tsv", sep="\t")
 
 
 if __name__ == '__main__':

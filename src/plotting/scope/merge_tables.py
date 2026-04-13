@@ -1,57 +1,65 @@
 #!/usr/bin/env python
-"""
-Generate a table with combined SCOPe 40 analysis results.
-"""
+"""Generate a merged SCOPe comparison table."""
+
+from pathlib import Path
 
 import pandas as pd
 
 
-# Path to the result directory. Adjust as needed.
-resdir = 'results'
+RESDIR = Path("results")
+REQUIRED_METHODS = ["tmvec1", "tmvec2", "tmvec2_student", "tmalign"]
+OPTIONAL_METHODS = ["prostt5"]
 
-# Methods being compared.
-methods = ['tmvec1', 'tmvec2', 'tmvec2_student', 'tmalign', 'foldseek']
+
+def load_method(path, method, score_column="tm_score"):
+    """Load one similarity CSV and normalize its pair key."""
+    df = pd.read_csv(path).copy()
+    df["seq_pair"] = df.apply(
+        lambda row: ",".join(sorted([row["seq1_id"], row["seq2_id"]])),
+        axis=1,
+    )
+    df = df.drop(columns=["seq1_id", "seq2_id"])
+    df = df.rename(columns={score_column: method}).set_index("seq_pair")
+    return df
 
 
 def main():
-    dfs = []
-    for method in methods[:4]:
-        df = pd.read_csv(f'{resdir}/scope40_{method}_similarities.csv').rename(
-            columns={'tm_score': method})
-        dfs.append(df)
+    tables = []
 
-    # Foldseek reports both TM-scores and E-values. We will use E-values.
-    df = pd.read_csv(f'{resdir}/scope40_foldseek_similarities.csv').drop(
-        columns='tm_score').rename(columns={'evalue': 'foldseek'})
+    for method in REQUIRED_METHODS:
+        path = RESDIR / f"scope40_{method}_similarities.csv"
+        tables.append(load_method(path, method))
 
-    # Two domains were broken down into chains in the Foldseek analysis, and
-    # they cannot be compared with other results. Remove them.
-    with open('domain.lst', 'r') as fh:
+    foldseek_path = RESDIR / "scope40_foldseek_similarities.csv"
+    foldseek_df = pd.read_csv(foldseek_path).copy()
+    with open("domain.lst", "r") as fh:
         domains = fh.read().splitlines()
-    df.query('seq1_id in @domains & seq2_id in @domains', inplace=True)
-    dfs.append(df)
+    foldseek_df.query("seq1_id in @domains & seq2_id in @domains", inplace=True)
+    foldseek_df["seq_pair"] = foldseek_df.apply(
+        lambda row: ",".join(sorted([row["seq1_id"], row["seq2_id"]])),
+        axis=1,
+    )
+    foldseek_df = (
+        foldseek_df.drop(columns=["seq1_id", "seq2_id", "tm_score"])
+        .rename(columns={"evalue": "foldseek"})
+        .set_index("seq_pair")
+    )
+    tables.append(foldseek_df)
 
-    # Sort and merge IDs of sequences 1 and 2.
-    for df in dfs:
-        df['seq_pair'] = df.apply(lambda row: ','.join(sorted(
-            [row['seq1_id'], row['seq2_id']])), axis=1)
-        df.drop(['seq1_id', 'seq2_id'], axis=1, inplace=True)
-        df.set_index('seq_pair', inplace=True)
+    for method in OPTIONAL_METHODS:
+        path = RESDIR / f"scope40_{method}_similarities.csv"
+        if not path.exists():
+            continue
+        tables.append(load_method(path, method))
 
-    # Combine results.
-    df = pd.concat(dfs, axis=1)
+    df = pd.concat(tables, axis=1)
     print(df.shape[0])
-    # df.dropna(how='any', inplace=True)
 
-    # Append ground truth.
-    truth = pd.read_table('truth.tsv')
-    truth['seq_pair'] = truth['a'] + ',' + truth['b']
-    truth.set_index('seq_pair', inplace=True)
-    truth.drop(columns=['a', 'b'], inplace=True)
+    truth = pd.read_table("truth.tsv")
+    truth["seq_pair"] = truth["a"] + "," + truth["b"]
+    truth = truth.set_index("seq_pair").drop(columns=["a", "b"])
     df = pd.concat([truth, df], axis=1)
-
-    # Output.
-    df.to_csv('results.tsv', sep='\t')
+    df.to_csv("results.tsv", sep="\t")
 
 
 if __name__ == '__main__':

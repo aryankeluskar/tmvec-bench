@@ -1,14 +1,13 @@
 #!/usr/bin/env python
-"""
-Foldseek Benchmark: Generate pairwise TM-score predictions for protein structures.
-"""
+"""Foldseek benchmark for pairwise structure comparison."""
 
+import argparse
+import os
 from pathlib import Path
 import subprocess
-import pandas as pd
 import tempfile
-import sys
-import os
+
+import pandas as pd
 
 
 def get_pdb_files(structure_dir):
@@ -27,7 +26,16 @@ def get_pdb_files(structure_dir):
     return pdb_files
 
 
-def run_foldseek(structure_dir, foldseek_bin, threads):
+def run_foldseek(
+    structure_dir,
+    foldseek_bin,
+    threads,
+    use_gpu=False,
+    exhaustive_search=True,
+    max_seqs=100000,
+    min_ungapped_score=0,
+    evalue=10,
+):
     """Run Foldseek all-vs-all search."""
     print("Running Foldseek all-vs-all search...")
 
@@ -38,14 +46,16 @@ def run_foldseek(structure_dir, foldseek_bin, threads):
             foldseek_bin, "easy-search",
             structure_dir, structure_dir,
             str(tsv_path), tmp_dir,
-            "--exhaustive-search", "1",
             "--format-output", "query,target,alntmscore,evalue",
             "--threads", str(threads),
-            "--gpu", "1",
-            "-e", "10",
-            "--max-seqs", "100000",
-            "--min-ungapped-score", "0"
+            "-e", str(evalue),
+            "--max-seqs", str(max_seqs),
+            "--min-ungapped-score", str(min_ungapped_score),
         ]
+        if exhaustive_search:
+            cmd.extend(["--exhaustive-search", "1"])
+        if use_gpu:
+            cmd.extend(["--gpu", "1"])
 
         # Run without capturing output so we can see progress
         result = subprocess.run(cmd)
@@ -123,27 +133,94 @@ def save_results(pairs, output_path):
 
 
 def main():
-    # Check for dataset argument (matching pattern from other benchmark scripts)
-    is_scope40 = len(sys.argv) > 1 and sys.argv[1] == "scope40"
-    
+    parser = argparse.ArgumentParser(description="Foldseek pairwise benchmark")
+    parser.add_argument(
+        "legacy_dataset",
+        nargs="?",
+        choices=["cath", "scope40"],
+        help="Legacy positional dataset selector kept for backward compatibility",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=["cath", "scope40"],
+        default="cath",
+        help="Dataset to benchmark",
+    )
+    parser.add_argument(
+        "--structure-dir",
+        default=None,
+        help="Override the default structure directory for the selected dataset",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Override the default output CSV path",
+    )
+    parser.add_argument(
+        "--foldseek-bin",
+        default="binaries/foldseek",
+        help="Path to the Foldseek binary",
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=32,
+        help="Number of Foldseek threads",
+    )
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        help="Enable GPU acceleration for the search stage",
+    )
+    parser.add_argument(
+        "--no-exhaustive-search",
+        action="store_true",
+        help="Disable exhaustive all-vs-all mode and keep Foldseek defaults",
+    )
+    parser.add_argument(
+        "--max-seqs",
+        type=int,
+        default=100000,
+        help="Maximum hits per query to pass the prefilter",
+    )
+    parser.add_argument(
+        "--min-ungapped-score",
+        type=int,
+        default=0,
+        help="Minimum ungapped score threshold passed to Foldseek",
+    )
+    parser.add_argument(
+        "--evalue",
+        type=float,
+        default=10.0,
+        help="E-value cutoff passed to Foldseek",
+    )
+    args = parser.parse_args()
+
+    dataset = args.legacy_dataset or args.dataset
+    is_scope40 = dataset == "scope40"
+
     # Dataset configurations (paths match tmalign.py)
     if is_scope40:
         structure_dir = "data/scope40pdb"
         output = "results/scope40_foldseek_similarities.csv"
     else:
-        # CATH dataset (default)
         structure_dir = "data/pdb/cath-s100"
         output = "results/cath_foldseek_similarities.csv"
-    
-    foldseek_bin = "binaries/foldseek"
-    threads = 32
+
+    structure_dir = args.structure_dir or structure_dir
+    output = args.output or output
+    foldseek_bin = args.foldseek_bin
+    exhaustive_search = not args.no_exhaustive_search
 
     print("=" * 80)
     print("Foldseek Benchmark")
     print(f"Dataset: {'SCOPe40' if is_scope40 else 'CATH'}")
     print(f"Structure dir: {structure_dir}")
     print(f"Output: {output}")
-    print(f"Threads: {threads}")
+    print(f"Threads: {args.threads}")
+    print(f"GPU: {args.use_gpu}")
+    print(f"Exhaustive search: {exhaustive_search}")
     print("=" * 80)
 
     # Verify paths exist
@@ -156,7 +233,16 @@ def main():
     if not pdb_files:
         raise ValueError(f"No structure files found in {structure_dir}")
 
-    df = run_foldseek(structure_dir, foldseek_bin, threads)
+    df = run_foldseek(
+        structure_dir=structure_dir,
+        foldseek_bin=foldseek_bin,
+        threads=args.threads,
+        use_gpu=args.use_gpu,
+        exhaustive_search=exhaustive_search,
+        max_seqs=args.max_seqs,
+        min_ungapped_score=args.min_ungapped_score,
+        evalue=args.evalue,
+    )
     pairs = parse_results(df)
     save_results(pairs, output)
 
