@@ -26,3 +26,4 @@ pdb/
 
 .DS_Store
 TM_Vec_2_Preprint/
+*.gguf
