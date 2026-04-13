@@ -1,16 +1,14 @@
 # TM-Vec 2 Benchmarking
 
-Benchmarking library for TMVec-2 Suite, comparing TM-Vec variants against structure and sequence baselines such as Foldseek, TM-align, ProstT5/PLM Blast style embeddings, and Diamond runtime baselines.
+Benchmarking library for TMVec-2 Suite, comparing to structure alignment methods like Foldseek and TMAlign.
 
 ## Description
 
-This repo benchmarks TM-Vec models and comparison baselines:
+This repo benchmarks four protein structure similarity methods against TM-Align scores:
 - **Foldseek**: Fast structure comparison using 3Di sequences
 - **TM-Vec**: Neural network model for TM-score prediction from ProtT5-XL embeddings
 - **TM-Vec 2**: Optimized architecture using Lobster-24M foundation model
 - **TM-Vec 2s**: BiLSTM student model distilled from TM-Vec 2
-- **ProstT5 / PLM Blast-style baseline**: Sequence-to-3Di retrieval using Foldseek with ProstT5 embeddings
-- **Diamond**: Sequence alignment baseline kept for runtime comparison only
 
 ## Installation
 
@@ -162,21 +160,12 @@ This downloads from ASTRAL/RCSB PDB.
 Using bash scripts in `scripts/` (recommended on clusters):
 
 ```bash
-# Accuracy benchmarks
+# This will run the benchmarks on the CATH S100 and SCOPe40 datasets, as well as the time benchmarks and generate the plots.
 bash scripts/tmvec2_student.sh
 bash scripts/tmvec2.sh
 bash scripts/tmvec1.sh
 bash scripts/foldseek.sh
 bash scripts/tmalign.sh
-
-# Foldseek runtime benchmarks agreed on April 6, 2026
-bash scripts/foldseek-cpu.sh
-bash scripts/foldseek-gpu.sh
-bash scripts/foldseek-gpu-exhaustive.sh
-
-# Additional baselines
-bash scripts/foldseek-prost.sh
-bash scripts/diamond.sh
 ```
 
 Alternatively, all benchmark code is in `src/benchmarks` and `src/time_benchmarks`. They can be run locally.
@@ -226,13 +215,6 @@ Plots are saved to `figures/` and include:
 - PR curves (precision-recall)
 - Density scatter plots (predicted vs. true TM-scores)
 - Runtime comparisons (encoding and query times)
-
-Runtime aggregation now discovers both legacy top-level CSVs and per-run directories in `results/time_benchmarks/`.
-
-Notes:
-- `src/benchmarks/foldseek.py` now supports default vs exhaustive search and optional GPU use.
-- `src/time_benchmarks/foldseek_time_benchmark.py` now supports the agreed runtime configurations: CPU default, GPU default, and GPU exhaustive.
-- `src/plotting/cath/merge_tables.py` and `src/plotting/scope/merge_tables.py` will include ProstT5 results automatically when `results/cath_prostt5_similarities.csv` or `results/scope40_prostt5_similarities.csv` exist.
 
 ## Validation of Published Results
 
